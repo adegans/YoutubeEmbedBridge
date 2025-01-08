@@ -1,10 +1,10 @@
 # Youtube Embed Bridge for RSS Bridge
 
-An alternative way to watch Youtube in your RSS reader through [RSS Bridge](https://github.com/RSS-Bridge/rss-bridge){:target="_blank"}.
+An alternative way to watch Youtube in your RSS reader through [RSS Bridge](https://github.com/RSS-Bridge/rss-bridge).
 Watch Youtube videos from your favorite channels in your favorite RSS reader without ads.
 
 ## Installation
-You'll need a working setup of [RSS Bridge](https://github.com/RSS-Bridge/rss-bridge){:target="_blank"}.
+You'll need a working setup of [RSS Bridge](https://github.com/RSS-Bridge/rss-bridge).
 
 Once RSS Bridge works you can add the Youtube Embed Bridge to it.
 Download the YoutubeEmbedBridge.php and place it in your RSS Bridge `/bridges/` folder.
