@@ -2,6 +2,7 @@
 /**
 * RssBridgeEmbedYoutube
 * Get YouTube videos as embeds in RSS feed items for easy viewing using the Channel Handle or Channel ID
+* Make sure config.ini.php is up-to-date. See readme.md (on Github: https://github.com/adegans/YoutubeEmbedBridge) for details.
 */
 
 class YoutubeEmbedBridge extends BridgeAbstract {
@@ -27,6 +28,18 @@ class YoutubeEmbedBridge extends BridgeAbstract {
 			]
 		],
 	];
+
+    const CONFIGURATION = [
+        'embed_use_embed_page' => [
+            'required' => true,
+        ],
+        'embed_page' => [
+            'required' => true,
+        ],
+        'embed_player_width' => [
+            'required' => true,
+        ]
+    ];
 
 	private $feedName = '';
 	private $feeduri = '';
@@ -156,13 +169,63 @@ class YoutubeEmbedBridge extends BridgeAbstract {
 		$item['author'] = $author;
 		$item['timestamp'] = $timestamp;
 		$item['uri'] = self::URI . '/watch?v=' . $videoid;
-//		$item['content'] = "<p><iframe style=\"width:100%;\" width=\"100%\" src=\"https://www.youtube-nocookie.com/embed/".$item['id']."\" title=\"".$item['title']." - YouTube\" frameborder=\"0\" allow=\"encrypted-media; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen></iframe></p>\n".
 
-		$item['content'] = "<p><iframe style=\"width:100%;\" width=\"100%\" src=\"https://www.youtube-nocookie.com/embed/".$item['id']."\" title=\"".$item['title']." - YouTube\" frameborder=\"0\" allow=\"encrypted-media; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen></iframe></p>\n".
-			"<p>Video links: <a href=\"https://www.youtube-nocookie.com/embed/".$item['id']."\">Watch embedded in browser</a> or <a href=\"".$item['uri']."\">watch on YouTube</a>.</p>\n".
-			$description;
+		// Do a thumbnail
+        $thumbnail = str_replace('/www.', '/img.', self::URI) . '/vi/' . $item['id'] . '/0.jpg';
+
+		// Embed url
+		if($this->getOption('embed_use_embed_page')) {
+			if(empty($this->getOption('embed_player_width')) || $this->getOption('embed_player_width') < 50 || $this->getOption('embed_player_width') > 95) {
+				$embed_width = "75";
+			} else {
+				$embed_width = $this->getOption('embed_player_width');
+			}
+			
+	        $embed_url = $this->getOption('embed_page').'?vid='.urlencode($item['id']).'&vw='.urlencode($embed_width).'&vt='.urlencode(htmlspecialchars($item['title'], ENT_QUOTES));
+	        $embed_links = '<p>Video links: <a href="'.$embed_url.'">Watch embedded in browser</a> or <a href="'.$item['uri'].'">watch on YouTube</a>.</p>';
+	    } else {
+		    $embed_url = $item['uri'];
+		    $embed_links = '<p>Video links: <a href="'.$item['uri'].'">watch on YouTube</a>.</p>';
+		}
+
+		$item['content'] = '';
+
+/*
+		// Standard Embed, older version
+		$item['content'] .= "<p><iframe 
+			style=\"width:100%;\" 
+			width=\"100%\" 
+			src=\"https://www.youtube.com/embed/".$item['id']."\" 
+			title=\"".$item['title']." - YouTube\" 
+			frameborder=\"0\" 
+			allow=\"encrypted-media; web-share\" 
+			referrerpolicy=\"strict-origin-when-cross-origin\" 
+			allowfullscreen>
+		</iframe></p>\n".
+*/
+
+/*
+		// Standard Embed, modified with 16:9 ratio
+		$item['content'] .= "<div style=\"position:relative; padding-bottom:56.25%; padding-top:25px; height:0;\">
+		<iframe 
+			style=\"position:absolute; top:0; left:0; width:100%; height:100%;\" 
+			width=\"100%\" 
+			src=\"https://www.youtube-nocookie.com/embed/".$item['id']."\" 
+			title=\"YouTube video player\" 
+			frameborder=\"0\" 
+			allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\" 
+			referrerpolicy=\"strict-origin-when-cross-origin\" 
+			allowfullscreen
+		></iframe></div>\n";
+*/
+
+        $item['content'] .= '<p><a href="'.$embed_url.'"><img src="'.$thumbnail.'" /></a></p>';
+		$item['content'] .= '<p>Video links: <a href="'.$embed_url.'">Watch embedded in browser</a> or <a href="'.$item['uri'].'">watch on YouTube</a>.</p>';
+		$item['content'] .= $description;
 		
 		$this->items[] = $item;
+		
+		unset($embed_url, $embed_links, $embed_width);
 	}
 
 	public function getURI() {
