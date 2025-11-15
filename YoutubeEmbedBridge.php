@@ -65,51 +65,124 @@ class YoutubeEmbedBridge extends BridgeAbstract {
 		$url_listing = '';
 		$url_feed = '';
 
-		$channel_handle = $this->getInput('h');
-		$channel_id = $this->getInput('c');
+		$channel_handle = trim($this->getInput('h'));
+		$channel_id = trim($this->getInput('c'));
 
 		if($channel_handle) {
-			$url_listing = self::URI . '/' . urlencode(trim($channel_handle)) . '/videos';
+			$url_listing = self::URI . '/' . urlencode($channel_handle) . '/videos';
 
-			// Find the feed url for the channel handle
+			// Load JSON data
 			$html = $this->fetch($url_listing);
-			if(!preg_match('/var ytInitialData = (.*?);<\/script>/i', $html, $matches)) {
-				$this->logger->debug('Could not find ytInitialData');
-	
-				$jsondata = null;
-			} else { 
-				$jsondata = json_decode($matches[1]);
-			}
+			$jsondata = $this->extractJsonFromHtml($html);
+			unset($html);
 
 			if(is_null($jsondata)) returnClientError("Jsondata can not be null.");
 
-            $url_feed = $jsondata->metadata->channelMetadataRenderer->rssUrl;
 			$this->feediconurl = $jsondata->metadata->channelMetadataRenderer->avatar->thumbnails[0]->url;
-
 			$this->feeduri = $url_listing;
 
-			// Fetch xml feed
-			$html = $this->fetch($url_feed);
-			$this->extractItemsFromXmlFeed($html);
+			// Get just the video data from JSON that's going to be missing from the XML data
+			// Passed through extractItemsFromXmlFeed()
+            $extradata = $jsondata->contents->twoColumnBrowseResultsRenderer->tabs[1];
+            $extradata = $extradata->tabRenderer->content->richGridRenderer->contents;
+
+			// Fetch XML feed
+			$html = $this->fetch($jsondata->metadata->channelMetadataRenderer->rssUrl);
+			$this->extractItemsFromXmlFeed($html, $extradata);
 
 			$this->feedName = $html->find('title', 0)->plaintext;
+			unset($html, $jsondata, $extradata);
 		} elseif($channel_id) {
-			$url_listing = self::URI . '/channel/' . urlencode(trim($channel_id)) . '/videos';
-			$url_feed = self::URI . '/feeds/videos.xml?channel_id=' . urlencode(trim($channel_id));
+			$url_listing = self::URI . '/channel/' . urlencode($channel_id) . '/videos';
 
+			// Load JSON data
+			$html = $this->fetch($url_listing);
+			$jsondata = $this->extractJsonFromHtml($html);
+			unset($html);
+
+			if(is_null($jsondata)) returnClientError("Jsondata can not be null.");
+
+			$this->feediconurl = $jsondata->metadata->channelMetadataRenderer->avatar->thumbnails[0]->url;
 			$this->feeduri = $url_listing;
 
-			// Fetch xml feed
-			$html = $this->fetch($url_feed);
-			$this->extractItemsFromXmlFeed($html);
+			// Get just the video data from JSON that's going to be missing from the XML data
+			// Passed through extractItemsFromXmlFeed()
+            $extradata = $jsondata->contents->twoColumnBrowseResultsRenderer->tabs[1];
+            $extradata = $extradata->tabRenderer->content->richGridRenderer->contents;
+
+			// Fetch XML feed
+			$html = $this->fetch(self::URI . '/feeds/videos.xml?channel_id=' . urlencode($channel_id));
+			$this->extractItemsFromXmlFeed($html, $extradata);
 
 			$this->feedName = $html->find('title', 0)->plaintext;
+			unset($html, $jsondata, $extradata);
 		} else {
 			returnClientError("You must either specify either a; YouTube Channel ID (UC-gNtK3RMsVTOxvoJxVUTMw) found in the Channels about or a Channel Handle (@arnandegans) visible in the channel URL.");
 		}
 	}
 
-	private function extractItemsFromXmlFeed($xml) {
+    private function extractJsonFromHtml($html) {
+		$scriptRegex = '/var ytInitialData = (.*?);<\/script>/';
+		$result = preg_match($scriptRegex, $html, $matches);
+
+		if(!$result) {
+			$this->logger->debug('Could not find ytInitialData');
+			
+			return null;
+		}
+
+		$data = json_decode($matches[1]);
+
+		return $data;
+	}
+
+	private function fetchItemsFromFromJsonData($extradata, $videoid) {
+		foreach($extradata as $item) {
+			$duration = '00:00';
+			$viewcount = 0;
+
+			$wrapper = null;
+			if (isset($item->gridVideoRenderer)) {
+				$wrapper = $item->gridVideoRenderer;
+			} elseif (isset($item->videoRenderer)) {
+				$wrapper = $item->videoRenderer;
+			} elseif (isset($item->richItemRenderer)) {
+				$wrapper = $item->richItemRenderer->content->videoRenderer;
+			} else {
+				continue;
+			}
+
+			// Is this the video we want?
+			if($wrapper->videoId != $videoid) continue;
+
+			// 01:03:30 | 15:06 | 1:24
+			$duration = $wrapper->lengthText->simpleText ?? false;
+			// 6,875 views
+			$viewcount = $wrapper->viewCountText->simpleText ?? 'n/a';
+
+			if(!$duration) {
+				foreach ($wrapper->thumbnailOverlays as $overlay) {
+					if (isset($overlay->thumbnailOverlayTimeStatusRenderer)) {
+						$duration = $overlay->thumbnailOverlayTimeStatusRenderer->text;
+						
+						break;
+					}
+				}
+			}
+/* Probably not required?
+			if (is_string($duration)) {
+				if (preg_match('/([\d]{1,2})\:([\d]{1,2})\:([\d]{2})/', $duration)) {
+					$duration = preg_replace('/([\d]{1,2})\:([\d]{1,2})\:([\d]{2})/', '$1:$2:$3', $duration);
+				} else {
+					$duration = preg_replace('/([\d]{1,2})\:([\d]{2})/', '00:$1:$2', $duration);
+				}
+			}
+*/
+			return array($duration, $viewcount);
+		}
+	}
+
+	private function extractItemsFromXmlFeed($xml, $extradata) {
 		$this->feedName = html_entity_decode($xml->find('feed > title', 0)->plaintext, ENT_QUOTES, 'UTF-8');
 
 		foreach($xml->find('entry') as $element) {
@@ -125,7 +198,7 @@ class YoutubeEmbedBridge extends BridgeAbstract {
 			$description = preg_replace('/(https?:\/\/(?:www\.)?(?:[a-zA-Z0-9-.]{2,256}\.[a-z]{2,20})(\:[0-9]{2,4})?(?:\/[a-zA-Z0-9@:%_\+.,~#"\'!?&\/\/=\-*]+|\/)?)/ims', '<a href="$1" target="_blank">$1</a> ', $description);
 			$timestamp = strtotime($element->find('published', 0)->plaintext);
 
-			$this->addItem($videoid, $title, $author, $description, $timestamp);
+			$this->addItem($videoid, $title, $author, $description, $timestamp, $extradata);
 		}
 	}
 
@@ -139,7 +212,7 @@ class YoutubeEmbedBridge extends BridgeAbstract {
 		return getSimpleHTMLDOM($url, $header, [], true, true, DEFAULT_TARGET_CHARSET, false);
 	}
 
-	private function addItem($videoid, $title, $author, $description, $timestamp) {
+	private function addItem($videoid, $title, $author, $description, $timestamp, $extradata) {
 		// Format description into paragraphs, if there is a description
 		if(strlen($description) > 0) {
 			// Clean up/prepare the description
@@ -163,6 +236,9 @@ class YoutubeEmbedBridge extends BridgeAbstract {
 			$description = preg_replace('|<p>\s*</p>|', '', $description);
 		}
 
+		// Finally figure out the extra data based on $videoid
+		$extradata = $this->fetchItemsFromFromJsonData($extradata, $videoid);
+
 		$item = [];
 		$item['id'] = $videoid;
 		$item['title'] = $title;
@@ -175,13 +251,12 @@ class YoutubeEmbedBridge extends BridgeAbstract {
 
 		// Embed url
 		if($this->getOption('embed_use_embed_page')) {
-			if(empty($this->getOption('embed_player_width')) || $this->getOption('embed_player_width') < 50 || $this->getOption('embed_player_width') > 95) {
-				$embed_width = "75";
-			} else {
-				$embed_width = $this->getOption('embed_player_width');
+			$embed_width = trim($this->getOption('embed_player_width'));
+			if(empty($embed_width) || $embed_width < 1 || $embed_width > 100) {
+				$embed_width = "70";
 			}
 			
-	        $embed_url = $this->getOption('embed_page').'?vid='.urlencode($item['id']).'&vw='.urlencode($embed_width).'&vt='.urlencode(htmlspecialchars($item['title'], ENT_QUOTES));
+	        $embed_url = trim($this->getOption('embed_page')).'?vid='.urlencode($item['id']).'&vw='.urlencode($embed_width).'&vt='.urlencode(htmlspecialchars($item['title'], ENT_QUOTES));
 	        $embed_links = '<p>Video links: <a href="'.$embed_url.'">Watch embedded in browser</a> or <a href="'.$item['uri'].'">watch on YouTube</a>.</p>';
 	    } else {
 		    $embed_url = $item['uri'];
@@ -220,7 +295,8 @@ class YoutubeEmbedBridge extends BridgeAbstract {
 */
 
         $item['content'] .= '<p><a href="'.$embed_url.'"><img src="'.$thumbnail.'" /></a></p>';
-		$item['content'] .= '<p>Video links: <a href="'.$embed_url.'">Watch embedded in browser</a> or <a href="'.$item['uri'].'">watch on YouTube</a>.</p>';
+        $item['content'] .= '<p>Length: '.$extradata[0].' ~ Views: '.$extradata[1].'</p>';
+		$item['content'] .= $embed_links;
 		$item['content'] .= $description;
 		
 		$this->items[] = $item;
