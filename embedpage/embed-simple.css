@@ -34,14 +34,18 @@ html {
 
 /* Make the body a nice central block */
 body {
-	height:100vh;
-	min-height:100vh;
-	max-height:100vh;
+	display:grid;
+	grid-template-rows:auto 1fr auto;
+	grid-template-columns:100%;
+	min-height:100vh; /* fallback height */
+	min-height:100svh; /* new small viewport height for modern browsers */
+    margin: 0 auto;
+	padding: 0;
+    width: 100%;
 	color: var(--text);
 	background-color: var(--bg);
 	font-size: 1.15rem;
 	line-height: 1.5;
-	margin: 0;
 }
 
 body > header {
@@ -54,6 +58,20 @@ body > header {
 body > header h1 {
 	max-width: 1200px;
 	margin: 0 auto;
+}
+
+body > footer {
+	margin: 0;
+	padding: 1rem 0.5rem;
+	background-color: var(--accent-bg);
+	color: var(--text-light);
+	font-size: 0.9rem;
+	text-align: center;
+	border-top: var(--border-width) solid var(--border);
+}
+
+body > footer p {
+	margin: 0;
 }
 
 /* Format headers */
@@ -89,8 +107,8 @@ a:hover {
 }
 
 section {
-	padding: 2rem 1rem;
-	margin: 1rem 0;
+	padding: 1em;
+	margin: 0;
 }
 
 /* Don't double separators when chaining sections */
@@ -121,12 +139,12 @@ hr {
 .videowrap { 
 	position: relative; 
 	overflow: hidden;
-	margin: 0 auto;
-	width: 70%;
+	margin: 1em auto;
+	width: 75%;
 	border-radius: var(--standard-border-radius);
 }
 
-/* -- Make it a 16:9 player with the padding */
+/* -- Make it a 16:9 player with padding */
 .videowrap::after { 
 	display: block; 
 	content: "";

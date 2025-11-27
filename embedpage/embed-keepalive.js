@@ -43,6 +43,6 @@ if ('wakeLock' in navigator) {
 		requestWakeLock();
 	})
 	
-	// Ask for a lock on pageload
+	// Ask for a lock on pageload (probably won't work)
 	requestWakeLock();
 }
